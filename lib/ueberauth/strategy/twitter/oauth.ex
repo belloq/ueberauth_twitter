@@ -29,11 +29,11 @@ defmodule Ueberauth.Strategy.Twitter.OAuth do
     end
   end
 
-  def access_token({token, token_secret}, verifier, opts \\ []) do
+  def access_token(token, verifier, opts \\ []) do
     opts
     |> client()
     |> to_url(:access_token)
-    |> Internal.get([{"oauth_verifier", verifier}], consumer(client()), token, token_secret)
+    |> Internal.get([{"oauth_verifier", verifier}], consumer(client()), token)
     |> decode_response
   end
 

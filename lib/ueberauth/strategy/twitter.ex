@@ -14,21 +14,30 @@ defmodule Ueberauth.Strategy.Twitter do
   Handles initial request for Twitter authentication.
   """
   def handle_request!(conn) do
-    token = Twitter.OAuth.request_token!([], [redirect_uri: callback_url(conn)])
+    opts = [redirect_uri: callback_url(conn)]
+    token = Twitter.OAuth.request_token!([], opts)
+
+    authorize_url = Twitter.OAuth.authorize_url!(token, opts)
 
     conn
-    |> put_session(:twitter_token, token)
-    |> redirect!(Twitter.OAuth.authorize_url!(token))
+    |> put_private(:oauth_token, token)
+    |> put_private(:authorize_url, authorize_url)
   end
 
   @doc """
   Handles the callback from Twitter.
   """
-  def handle_callback!(%Plug.Conn{params: %{"oauth_verifier" => oauth_verifier}} = conn) do
-    token = get_session(conn, :twitter_token)
-    case Twitter.OAuth.access_token(token, oauth_verifier) do
+  def handle_callback!(%Plug.Conn{params: %{"oauth_token" => oauth_token, "oauth_verifier" => oauth_verifier}} = conn) do
+    case Twitter.OAuth.access_token(oauth_token, oauth_verifier) do
       {:ok, access_token} -> fetch_user(conn, access_token)
-      {:error, error} -> set_errors!(conn, [error(error.code, error.reason)])
+      {:error, error} ->
+        err =
+          if is_binary(error) do
+            error(error, "")
+          else
+            error(error.code, error.reason)
+          end
+        set_errors!(conn, [err])
     end
   end
 
@@ -41,7 +50,8 @@ defmodule Ueberauth.Strategy.Twitter do
   def handle_cleanup!(conn) do
     conn
     |> put_private(:twitter_user, nil)
-    |> put_session(:twitter_token, nil)
+    |> put_private(:oauth_token, nil)
+    |> put_private(:authorize_url, nil)
   end
 
   @doc """
@@ -89,7 +99,7 @@ defmodule Ueberauth.Strategy.Twitter do
   Stores the raw information (including the token) obtained from the twitter callback.
   """
   def extra(conn) do
-    {token, _secret} = get_session(conn, :twitter_token)
+    {token, _secret} = conn.private.twitter_token
 
     %Extra{
       raw_info: %{
